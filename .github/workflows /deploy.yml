@@ -1,0 +1,33 @@
+name: Deploy Dockerized App to EC2
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Build and send Docker image
+        run: |
+          docker build -t myapp:latest .
+          docker save myapp:latest | ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'docker load'
+
+      - name: Run Docker container on EC2
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            docker stop app || true
+            docker rm app || true
+            docker run -d --name app -p 80:3002 app:latest
+          EOF
